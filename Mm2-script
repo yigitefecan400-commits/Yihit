@@ -1,0 +1,284 @@
+local player = game.Players.LocalPlayer
+local runService = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+local soundService = game:GetService("SoundService")
+
+-- Eski GUI varsa temizle
+if game.CoreGui:FindFirstChild("YigitHubUltimate") then
+    game.CoreGui.YigitHubUltimate:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+local Frame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+
+ScreenGui.Name = "YigitHubUltimate"
+ScreenGui.Parent = game.CoreGui
+
+-- Arka plan müzik (Hata vermemesi için korumaya alındı)
+pcall(function()
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://9043887091"
+    sound.Volume = 1
+    sound.Looped = true
+    sound.Parent = soundService
+    sound:Play()
+end)
+
+-- Panel Tasarımı
+Frame.Size = UDim2.new(0, 230, 0, 440)
+Frame.Position = UDim2.new(0.1, 0, 0.1, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.Active = true
+Frame.Draggable = true 
+Frame.Parent = ScreenGui
+
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Text = "🔥 YIGIT HUB [FIXED] 🔥"
+Title.TextColor3 = Color3.fromRGB(0, 255, 128)
+Title.BackgroundTransparency = 1
+Title.TextSize = 14
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = Frame
+
+-- Buton Oluşturucu
+local function createButton(posY, text)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.85, 0, 0, 28)
+    btn.Position = UDim2.new(0.075, 0, 0, posY)
+    btn.Text = text
+    btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.SourceSansBold
+    btn.Parent = Frame
+    return btn
+end
+
+local ToggleBtn = createButton(38, "Fly (1500): KAPALI")
+local NoclipBtn = createButton(70, "Noclip: KAPALI")
+local TrollBtn = createButton(102, "Troll (Hızlı Spin): KAPALI")
+local SpeedBtn = createButton(134, "SpeedHack: KAPALI")
+local InfJumpBtn = createButton(166, "Inf Jump: KAPALI")
+local EspBtn = createButton(198, "ESP (Herkesi Gör): KAPALI")
+local FovBtn = createButton(230, "Geniş Açı (FOV 120): KAPALI")
+local AutoHitBtn = createButton(262, "Auto Hit (Otomatik Vur): KAPALI")
+local FlingBtn = createButton(294, "Fling (Adamları Uçur): KAPALI")
+
+-- Yukarı / Aşağı Butonları
+local UpBtn = Instance.new("TextButton")
+UpBtn.Size = UDim2.new(0.4, 0, 0, 28)
+UpBtn.Position = UDim2.new(0.075, 0, 0, 332)
+UpBtn.Text = "YUKARI"
+UpBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+UpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UpBtn.Font = Enum.Font.SourceSansBold
+UpBtn.Parent = Frame
+
+local DownBtn = Instance.new("TextButton")
+DownBtn.Size = UDim2.new(0.4, 0, 0, 28)
+DownBtn.Position = UDim2.new(0.525, 0, 0, 332)
+DownBtn.Text = "AŞAĞI"
+DownBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+DownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DownBtn.Font = Enum.Font.SourceSansBold
+DownBtn.Parent = Frame
+
+-- 1. Modern ve Güçlü Fly Mekanizması
+local flying = false
+local speed = 1500
+local flyConnection
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    flying = not flying
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    if flying then
+        ToggleBtn.Text = "Fly (1500): AÇIK"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+        hum.PlatformStanding = true
+
+        flyConnection = runService.RenderStepped:Connect(function()
+            if not flying or not hrp or not char.Parent then return end
+            local cam = workspace.CurrentCamera
+            hrp.AssemblyLinearVelocity = cam.CFrame.LookVector * speed
+            hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
+        end)
+    else
+        ToggleBtn.Text = "Fly (1500): KAPALI"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        hum.PlatformStanding = false
+        if flyConnection then flyConnection:Disconnect() end
+        if hrp then hrp.AssemblyLinearVelocity = Vector3.zero end
+    end
+end)
+
+-- 2. Noclip
+local noclip = false
+runService.Stepped:Connect(function()
+    if noclip and player.Character then
+        for _, v in pairs(player.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
+            end
+        end
+    end
+end)
+
+NoclipBtn.MouseButton1Click:Connect(function()
+    noclip = not noclip
+    NoclipBtn.Text = noclip and "Noclip: AÇIK" or "Noclip: KAPALI"
+    NoclipBtn.BackgroundColor3 = noclip and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+end)
+
+-- 3. Troll Spin
+local trolling = false
+TrollBtn.MouseButton1Click:Connect(function()
+    trolling = not trolling
+    TrollBtn.Text = trolling and "Troll (Hızlı Spin): AÇIK" or "Troll (Hızlı Spin): KAPALI"
+    TrollBtn.BackgroundColor3 = trolling and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    
+    task.spawn(function()
+        while trolling do
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(90), 0)
+            end
+            task.wait()
+        end
+    end)
+end)
+
+-- 4. SpeedHack (Oyunların sıfırlamasını engellemek için döngülü)
+local speedhacking = false
+SpeedBtn.MouseButton1Click:Connect(function()
+    speedhacking = not speedhacking
+    SpeedBtn.Text = speedhacking and "SpeedHack: AÇIK" or "SpeedHack: KAPALI"
+    SpeedBtn.BackgroundColor3 = speedhacking and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    
+    task.spawn(function()
+        while speedhacking do
+            local char = player.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.WalkSpeed = 150
+            end
+            task.wait(0.2)
+        end
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end)
+end)
+
+-- 5. Inf Jump
+local infJump = false
+uis.JumpRequest:Connect(function()
+    if infJump and player.Character then
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+InfJumpBtn.MouseButton1Click:Connect(function()
+    infJump = not infJump
+    InfJumpBtn.Text = infJump and "Inf Jump: AÇIK" or "Inf Jump: KAPALI"
+    InfJumpBtn.BackgroundColor3 = infJump and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+end)
+
+-- 6. ESP
+local espEnabled = false
+EspBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    EspBtn.Text = espEnabled and "ESP (Herkesi Gör): AÇIK" or "ESP (Herkesi Gör): KAPALI"
+    EspBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            if espEnabled then
+                if not p.Character:FindFirstChild("YigitHighlight") then
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "YigitHighlight"
+                    hl.FillColor = Color3.fromRGB(255, 0, 0)
+                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    hl.Parent = p.Character
+                end
+            else
+                local hl = p.Character:FindFirstChild("YigitHighlight")
+                if hl then hl:Destroy() end
+            end
+        end
+    end
+end)
+
+-- 7. FOV Changer
+local fovEnabled = false
+FovBtn.MouseButton1Click:Connect(function()
+    fovEnabled = not fovEnabled
+    FovBtn.Text = fovEnabled and "Geniş Açı (FOV 120): AÇIK" or "Geniş Açı (FOV 120): KAPALI"
+    FovBtn.BackgroundColor3 = fovEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    workspace.CurrentCamera.FieldOfView = fovEnabled and 120 or 70
+end)
+
+-- 8. Auto Hit
+local autoHit = false
+AutoHitBtn.MouseButton1Click:Connect(function()
+    autoHit = not autoHit
+    AutoHitBtn.Text = autoHit and "Auto Hit: AÇIK" or "Auto Hit: KAPALI"
+    AutoHitBtn.BackgroundColor3 = autoHit and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    
+    task.spawn(function()
+        while autoHit do
+            local char = player.Character
+            if char then
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool:Activate()
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+end)
+
+-- 9. Fling (Uçurma)
+local flinging = false
+FlingBtn.MouseButton1Click:Connect(function()
+    flinging = not flinging
+    FlingBtn.Text = flinging and "Fling: AÇIK" or "Fling (Adamları Uçur): KAPALI"
+    FlingBtn.BackgroundColor3 = flinging and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+    
+    task.spawn(function()
+        while flinging do
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 9999, 0)
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(random_spin or 45), 0)
+            end
+            task.wait()
+        end
+    end)
+end)
+
+-- Yukarı / Aşağı Işınlanma
+UpBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame + Vector3.new(0, 35, 0)
+    end
+end)
+
+DownBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame - Vector3.new(0, 35, 0)
+    end
+end)
