@@ -1,0 +1,278 @@
+--!strict
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+type FlightConfig = {
+    MinSpeed: number,
+    MaxSpeed: number,
+    CurrentSpeed: number,
+    SpringFrequency: number,
+    DampingRatio: number,
+    BankFactor: number
+}
+
+local AdvancedFlightController = {}
+AdvancedFlightController.__index = AdvancedFlightController
+
+function AdvancedFlightController.new()
+    local self = setmetatable({}, AdvancedFlightController)
+    
+    self.Config = {
+        MinSpeed = 20,
+        MaxSpeed = 500,
+        CurrentSpeed = 80,
+        SpringFrequency = 12,
+        DampingRatio = 0.8,
+        BankFactor = 0.4
+    }
+    
+    self.Active = false
+    self.Noclip = false
+    self.CurrentVelocity = Vector3.zero
+    self.TargetVelocity = Vector3.zero
+    self.CurrentRotation = 0
+    
+    self.RootPart = nil :: BasePart?
+    self.RenderConnection = nil :: RBXScriptConnection?
+    self.NoclipConnection = nil :: RBXScriptConnection?
+    
+    self.RaycastParams = RaycastParams.new()
+    self.RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    
+    self:CreateModernUI()
+    return self
+end
+
+function AdvancedFlightController:CreateModernUI()
+    local parent = (pcall(function() return CoreGui:IsA("Instance") end) and CoreGui) or LocalPlayer:WaitForChild("PlayerGui")
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AxiomAdvancedPanel"
+    gui.ResetOnSpawn = false
+    gui.Parent = parent
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 240, 0, 260)
+    mainFrame.Position = UDim2.new(0.02, 0, 0.4, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.ClipsDescendants = true
+    mainFrame.Parent = gui
+    Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+    
+    -- Smooth Dragging Logic
+    local dragInput, dragStart, startPos
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragStart = nil end
+            end)
+        end
+    end)
+    mainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and dragStart then
+            local delta = input.Position - dragStart
+            TweenService:Create(mainFrame, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            }):Play()
+        end
+    end)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBlack
+    title.Text = "AXIOM CORE"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 16
+    title.Parent = mainFrame
+    
+    -- Uçuş Butonu
+    local flightBtn = self:CreateButton(mainFrame, "Uçuş Modu: KAPALI", UDim2.new(0.05, 0, 0.18, 0))
+    flightBtn.MouseButton1Click:Connect(function()
+        self:ToggleFlight()
+        flightBtn.Text = self.Active and "Uçuş Modu: AÇIK" or "Uçuş Modu: KAPALI"
+        TweenService:Create(flightBtn, TweenInfo.new(0.3), {BackgroundColor3 = self.Active and Color3.fromRGB(40, 200, 100) or Color3.fromRGB(30, 30, 35)}):Play()
+    end)
+    
+    -- Noclip Butonu
+    local noclipBtn = self:CreateButton(mainFrame, "Noclip: KAPALI", UDim2.new(0.05, 0, 0.38, 0))
+    noclipBtn.MouseButton1Click:Connect(function()
+        self.Noclip = not self.Noclip
+        noclipBtn.Text = self.Noclip and "Noclip: AÇIK" or "Noclip: KAPALI"
+        TweenService:Create(noclipBtn, TweenInfo.new(0.3), {BackgroundColor3 = self.Noclip and Color3.fromRGB(200, 100, 40) or Color3.fromRGB(30, 30, 35)}):Play()
+        self:UpdateNoclipState()
+    end)
+    
+    -- Hız Slider'ı
+    local sliderTitle = Instance.new("TextLabel")
+    sliderTitle.Size = UDim2.new(0.9, 0, 0, 20)
+    sliderTitle.Position = UDim2.new(0.05, 0, 0.62, 0)
+    sliderTitle.BackgroundTransparency = 1
+    sliderTitle.Font = Enum.Font.GothamSemibold
+    sliderTitle.Text = "Hız Çarpanı: " .. self.Config.CurrentSpeed
+    sliderTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+    sliderTitle.TextXAlignment = Enum.TextXAlignment.Left
+    sliderTitle.Parent = mainFrame
+    
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(0.9, 0, 0, 12)
+    sliderBg.Position = UDim2.new(0.05, 0, 0.72, 0)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    sliderBg.Parent = mainFrame
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
+    
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new((self.Config.CurrentSpeed / self.Config.MaxSpeed), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+    sliderFill.Parent = sliderBg
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+    
+    local draggingSlider = false
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = true end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if draggingSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local relativeX = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            TweenService:Create(sliderFill, TweenInfo.new(0.1), {Size = UDim2.new(relativeX, 0, 1, 0)}):Play()
+            self.Config.CurrentSpeed = math.floor(self.Config.MinSpeed + (relativeX * (self.Config.MaxSpeed - self.Config.MinSpeed)))
+            sliderTitle.Text = "Hız Çarpanı: " .. self.Config.CurrentSpeed
+        end
+    end)
+end
+
+function AdvancedFlightController:CreateButton(parent, text, position)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 40)
+    btn.Position = position
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    btn.AutoButtonColor = false
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 13
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.2), {Size = UDim2.new(0.92, 0, 0, 42)}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.2), {Size = UDim2.new(0.9, 0, 0, 40)}):Play() end)
+    
+    return btn
+end
+
+function AdvancedFlightController:Initialize()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    self.RootPart = character:WaitForChild("HumanoidRootPart") :: BasePart
+    self.RaycastParams.FilterDescendantsInstances = {character}
+end
+
+function AdvancedFlightController:GetInputVector(): Vector3
+    local dir = Vector3.zero
+    local camCFrame = Camera.CFrame
+    
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += camCFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= camCFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= camCFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += camCFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0, 1, 0) end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0, 1, 0) end
+    
+    return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+end
+
+function AdvancedFlightController:UpdateNoclipState()
+    if self.NoclipConnection then
+        self.NoclipConnection:Disconnect()
+        self.NoclipConnection = nil
+    end
+    
+    if self.Noclip then
+        self.NoclipConnection = RunService.Stepped:Connect(function()
+            if not LocalPlayer.Character then return end
+            for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end)
+    end
+end
+
+function AdvancedFlightController:StepPhysics(dt: number)
+    if not self.RootPart then return end
+    
+    local rawInput = self:GetInputVector()
+    local speedMultiplier = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 2.5 or 1.0
+    local targetSpeed = rawInput.Magnitude > 0 and (self.Config.CurrentSpeed * speedMultiplier) or 0
+    
+    self.TargetVelocity = rawInput * targetSpeed
+    
+    -- Spring-Damper Inertia
+    local delta = self.TargetVelocity - self.CurrentVelocity
+    local spring = delta * (self.Config.SpringFrequency ^ 2 * dt)
+    local damp = self.CurrentVelocity * (2 * self.Config.SpringFrequency * self.Config.DampingRatio * dt)
+    
+    self.CurrentVelocity += (spring - damp)
+    local frameVelocity = self.CurrentVelocity * dt
+    local targetPos = self.RootPart.Position + frameVelocity
+    
+    -- Raycast Collision Check (Noclip kapalıysa)
+    if not self.Noclip and frameVelocity.Magnitude > 0 then
+        local ray = Workspace:Raycast(self.RootPart.Position, frameVelocity, self.RaycastParams)
+        if ray then
+            targetPos = ray.Position - (frameVelocity.Unit * 1.5)
+            self.CurrentVelocity = Vector3.zero
+        end
+    end
+    
+    -- Kamera Rotasyonu
+    local targetRotation = -rawInput:Dot(Camera.CFrame.RightVector) * self.Config.BankFactor
+    self.CurrentRotation += (targetRotation - self.CurrentRotation) * math.clamp(dt * 12, 0, 1)
+    
+    -- Dinamik FOV (Hız Hissi)
+    local targetFOV = 70 + (self.CurrentVelocity.Magnitude / 5)
+    Camera.FieldOfView = Camera.FieldOfView + (math.clamp(targetFOV, 70, 110) - Camera.FieldOfView) * (dt * 5)
+    
+    self.RootPart.CFrame = CFrame.new(targetPos) * Camera.CFrame.Rotation * CFrame.Angles(0, 0, self.CurrentRotation)
+    self.RootPart.AssemblyLinearVelocity = Vector3.zero
+    self.RootPart.AssemblyAngularVelocity = Vector3.zero
+end
+
+function AdvancedFlightController:ToggleFlight()
+    self.Active = not self.Active
+    
+    if self.Active then
+        if not self.RootPart then self:Initialize() end
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.PlatformStand = true end
+        
+        self.RenderConnection = RunService.RenderStepped:Connect(function(dt)
+            self:StepPhysics(dt)
+        end)
+    else
+        if self.RenderConnection then
+            self.RenderConnection:Disconnect()
+            self.RenderConnection = nil
+        end
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.PlatformStand = false end
+        
+        self.CurrentVelocity = Vector3.zero
+        TweenService:Create(Camera, TweenInfo.new(0.5), {FieldOfView = 70}):Play()
+    end
+end
+
+return AdvancedFlightController.new()
